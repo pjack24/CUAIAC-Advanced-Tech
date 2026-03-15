@@ -1,0 +1,15 @@
+Tokenization - what is a meaningful part of the string that we will map to an embedding?
+    byte-pair encoding is cheap and useful for gpt 2
+        group ascii characters by frequency
+Tensor - pytorch data type allowing gradient
+
+Add positional dependicies from context matrix
+
+
+query vector - who has info on ___
+key vectr - information on _____
+
+masking prevents querys from accessing future information
+
+value vector is actual information/data
+key is metadata

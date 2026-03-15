@@ -1,0 +1,77 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{hyperref}
+
+\title{Transformer Attention: Code-to-Math Notes}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Notation and Shapes}
+Let
+\begin{itemize}
+  \item $B$ = batch size, $P$ = sequence length, $D$ = model width, $H$ = number of heads, $d$ = head width ($d = D/H$).
+  \item $X \in \mathbb{R}^{B \times P \times D}$: input to attention (called \texttt{query\_input} / \texttt{normalized\_resid\_pre}).
+  \item $W_Q, W_K, W_V \in \mathbb{R}^{H \times D \times d}$: per-head projection weights.
+  \item $b_Q, b_K, b_V \in \mathbb{R}^{H \times d}$: per-head biases.
+  \item $W_O \in \mathbb{R}^{H \times d \times D}$: output projection weights.
+  \item $b_O \in \mathbb{R}^{D}$: output bias.
+\end{itemize}
+
+\section*{Query, Key, Value Projections}
+Code uses \texttt{einsum} to express batched matrix multiplication with named axes. The math is:
+\begin{align}
+Q_{b,h,p,\alpha} &= \sum_{d=1}^{D} X_{b,p,d}\,(W_Q)_{h,d,\alpha} + (b_Q)_{h,\alpha} \\
+K_{b,h,p,\alpha} &= \sum_{d=1}^{D} X_{b,p,d}\,(W_K)_{h,d,\alpha} + (b_K)_{h,\alpha} \\
+V_{b,h,p,\alpha} &= \sum_{d=1}^{D} X_{b,p,d}\,(W_V)_{h,d,\alpha} + (b_V)_{h,\alpha}
+\end{align}
+
+This corresponds to the code pattern:
+\begin{quote}
+\texttt{einsum(X, W\_Q, "batch pos d\_model, n\_heads d\_model d\_head -> batch n\_heads pos d\_head")}
+\end{quote}
+The shared index \texttt{d\_model} is summed over, leaving \texttt{batch, n\_heads, pos, d\_head}.
+
+\section*{Attention Scores and Softmax}
+Scaled dot-product attention for each head:
+\begin{align}
+S_{b,h,q,k} &= \frac{1}{\sqrt{d}} \sum_{\alpha=1}^{d} Q_{b,h,q,\alpha} K_{b,h,k,\alpha} \\
+A_{b,h,q,k} &= \operatorname{softmax}_k(S_{b,h,q,k})
+\end{align}
+Causal masking (upper triangle) sets future positions to a large negative value before the softmax.
+
+\section*{Weighted Sum of Values}
+\begin{equation}
+Z_{b,h,q,\alpha} = \sum_{k=1}^{P} A_{b,h,q,k} V_{b,h,k,\alpha}
+\end{equation}
+
+\section*{Output Projection}
+Concatenate heads via a weighted sum over heads and head dimensions:
+\begin{equation}
+Y_{b,q,D} = \sum_{h=1}^{H} \sum_{\alpha=1}^{d} Z_{b,h,q,\alpha} (W_O)_{h,\alpha,D} + (b_O)_D
+\end{equation}
+The final output $Y \in \mathbb{R}^{B \times P \times D}$ is the attention block output.
+
+\section*{Residual Block Context}
+In a transformer block, attention is used inside a residual pathway:
+\begin{align}
+\tilde{X} &= \operatorname{LayerNorm}(X) \\
+\operatorname{Attn}(X) &= \text{as defined above} \\
+X' &= X + \operatorname{Attn}(\tilde{X}) \\
+\tilde{X}' &= \operatorname{LayerNorm}(X') \\
+\operatorname{MLP}(X') &= W_2\,\phi(W_1 \tilde{X}' + b_1) + b_2 \\
+\operatorname{Block}(X) &= X' + \operatorname{MLP}(\tilde{X}')
+\end{align}
+
+\section*{Reading \texttt{einsum} Quickly (Rule of Thumb)}
+Given \texttt{einsum(A, B, "i j, j k -> i k")}:
+\begin{itemize}
+  \item Repeated indices (\texttt{j}) are summed over.
+  \item Indices appearing in only one input are carried forward.
+  \item The right-hand side specifies the output order.
+\end{itemize}
+
+\end{document}
